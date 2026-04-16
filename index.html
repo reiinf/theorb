@@ -1,1 +1,244 @@
-123
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Orb</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0608;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Cinzel', serif;
+    overflow: hidden;
+  }
+
+  #game {
+    position: relative;
+    width: 1328px;
+    height: 800px;
+    overflow: hidden;
+    cursor: default;
+  }
+
+  #game img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1328px;
+    height: 800px;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* z-index order: 4(bottom) → 3 → 2 → 1(top) */
+  #layer4 { z-index: 1; }
+  #layer3 { z-index: 2; }
+  #layer2 { z-index: 3; }
+  #layer1 { z-index: 4; opacity: 0.55; }
+
+
+
+  /* Counter */
+  #counter {
+    position: absolute;
+    top: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #counter-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: rgba(180, 210, 230, 0.6);
+    margin-bottom: 4px;
+  }
+
+  #counter-value {
+    font-size: 52px;
+    font-weight: 700;
+    color: #a8dce8;
+    text-shadow:
+      0 0 20px rgba(100, 200, 230, 0.8),
+      0 0 60px rgba(100, 200, 230, 0.3);
+    line-height: 1;
+    transition: transform 0.08s ease;
+  }
+
+  #counter-value.bump {
+    transform: scale(1.15);
+  }
+
+  /* Floating +1 */
+  .floaty {
+    position: absolute;
+    z-index: 20;
+    font-family: 'Cinzel', serif;
+    font-size: 22px;
+    font-weight: 700;
+    color: #a8dce8;
+    text-shadow: 0 0 12px rgba(100, 200, 230, 0.9);
+    pointer-events: none;
+    animation: floatUp 0.9s ease-out forwards;
+  }
+
+  @keyframes floatUp {
+    0%   { opacity: 1; transform: translateY(0) scale(1); }
+    60%  { opacity: 1; transform: translateY(-50px) scale(1.1); }
+    100% { opacity: 0; transform: translateY(-90px) scale(0.8); }
+  }
+
+  /* Orb click effect */
+  #layer1.clicked {
+    animation: orbClick 0.15s ease-out;
+  }
+
+  @keyframes orbClick {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(0.97); }
+    100% { transform: scale(1); }
+  }
+
+  /* Character nudge */
+  #layer3.nudge {
+    animation: charNudge 0.3s ease-out;
+  }
+
+  @keyframes charNudge {
+    0%   { transform: translateY(0); }
+    30%  { transform: translateY(-6px); }
+    60%  { transform: translateY(2px); }
+    100% { transform: translateY(0); }
+  }
+
+  /* Orb glow pulse on click */
+  #orb-glow {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    top: 0; left: 0;
+    width: 1328px;
+    height: 800px;
+    background: radial-gradient(ellipse 200px 180px at 66% 82%, rgba(100, 210, 230, 0.35) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.05s ease;
+  }
+
+  #orb-glow.flash {
+    animation: glowFlash 0.4s ease-out forwards;
+  }
+
+  @keyframes glowFlash {
+    0%   { opacity: 1; }
+    100% { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <!-- Layer 4: bottom (background orb base) -->
+  <img id="layer4" src="https://raw.githubusercontent.com/reiinf/theorb/main/images/4.webp" alt="">
+  <!-- Layer 3: character -->
+  <img id="layer3" src="https://raw.githubusercontent.com/reiinf/theorb/main/images/3.webp" alt="">
+  <!-- Layer 2: mage + background -->
+  <img id="layer2" src="https://raw.githubusercontent.com/reiinf/theorb/main/images/2.webp" alt="">
+  <!-- Layer 1: orb top, clickable, 55% opacity -->
+  <img id="layer1" src="https://raw.githubusercontent.com/reiinf/theorb/main/images/1.webp" alt="">
+
+  <!-- Glow effect overlay -->
+  <div id="orb-glow"></div>
+
+  <!-- Counter -->
+  <div id="counter">
+    <div id="counter-label">ponder the marple</div>
+    <div id="counter-value">0</div>
+  </div>
+</div>
+
+<script>
+  let count = 0;
+  const game = document.getElementById('game');
+  const orbImg = document.getElementById('layer1');
+  const character = document.getElementById('layer3');
+  const counterVal = document.getElementById('counter-value');
+  const orbGlow = document.getElementById('orb-glow');
+
+  // Orb ellipse in original 1328x800 coordinates
+  const ORB_CX = 870;  // center x
+  const ORB_CY = 658;  // center y
+  const ORB_RX = 165;  // horizontal radius
+  const ORB_RY = 145;  // vertical radius
+
+  function isInsideOrb(x, y) {
+    const dx = (x - ORB_CX) / ORB_RX;
+    const dy = (y - ORB_CY) / ORB_RY;
+    return (dx * dx + dy * dy) <= 1;
+  }
+
+  // Update cursor based on position
+  game.addEventListener('mousemove', (e) => {
+    const rect = game.getBoundingClientRect();
+    const scaleX = 1328 / rect.width;
+    const scaleY = 800 / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    game.style.cursor = isInsideOrb(x, y) ? 'pointer' : 'default';
+  });
+
+  game.addEventListener('click', (e) => {
+    const rect = game.getBoundingClientRect();
+    const scaleX = 1328 / rect.width;
+    const scaleY = 800 / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    if (!isInsideOrb(x, y)) return;
+
+    count++;
+    counterVal.textContent = count;
+
+    // Counter bump
+    counterVal.classList.remove('bump');
+    void counterVal.offsetWidth;
+    counterVal.classList.add('bump');
+    setTimeout(() => counterVal.classList.remove('bump'), 150);
+
+    // Orb click animation
+    orbImg.classList.remove('clicked');
+    void orbImg.offsetWidth;
+    orbImg.classList.add('clicked');
+    setTimeout(() => orbImg.classList.remove('clicked'), 200);
+
+    // Character nudge
+    character.classList.remove('nudge');
+    void character.offsetWidth;
+    character.classList.add('nudge');
+    setTimeout(() => character.classList.remove('nudge'), 350);
+
+    // Glow flash
+    orbGlow.classList.remove('flash');
+    void orbGlow.offsetWidth;
+    orbGlow.classList.add('flash');
+    setTimeout(() => orbGlow.classList.remove('flash'), 450);
+
+    // Floating +1 — position relative to game div
+    const floaty = document.createElement('div');
+    floaty.className = 'floaty';
+    floaty.textContent = '+1';
+    floaty.style.left = (e.clientX - rect.left - 15) + 'px';
+    floaty.style.top = (e.clientY - rect.top - 20) + 'px';
+    game.appendChild(floaty);
+    setTimeout(() => floaty.remove(), 900);
+  });
+</script>
+</body>
+</html>
